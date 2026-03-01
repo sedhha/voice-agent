@@ -1,0 +1,10 @@
+services:
+  voice-agent:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - ./server:/app/server
+    command: uv run uvicorn server.main:app --host 0.0.0.0 --port 8080 --reload
