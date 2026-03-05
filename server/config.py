@@ -1,6 +1,6 @@
 from pydantic_settings import BaseSettings
 
-USE_AUDIO = False
+USE_AUDIO = True
 
 class Settings(BaseSettings):
     """Voice agent configuration — loaded from environment variables."""

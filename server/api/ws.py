@@ -84,7 +84,16 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
                     live_queue.send_realtime(audio_blob)
                 elif "text" in raw:
                     msg = json.loads(raw["text"])
-                    if msg.get("type") == "text":
+                    if msg.get("type") == "auth":
+                        # Store Firebase token in session state for CC API calls
+                        sess = await session_service.get_session(
+                            app_name=settings.app_name,
+                            user_id=user_id,
+                            session_id=session_id,
+                        )
+                        if sess:
+                            sess.state["user_token"] = msg.get("token", "")
+                    elif msg.get("type") == "text":
                         content = types.Content(
                             parts=[types.Part(text=msg["text"])]
                         )
