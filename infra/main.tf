@@ -40,11 +40,6 @@ resource "google_cloud_run_v2_service" "voice_agent" {
       }
 
       env {
-        name  = "PORT"
-        value = "8080"
-      }
-
-      env {
         name  = "GOOGLE_API_KEY"
         value = var.google_api_key
       }
