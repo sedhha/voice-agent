@@ -1,0 +1,109 @@
+name: Deploy Voice Agent
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GCP_REGION: us-central1
+  SERVICE_NAME: compliance-copilot-voice-agent
+  ARTIFACT_REPOSITORY: voice-agent
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.5
+
+      - name: Ensure Terraform state bucket exists
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          REGION: ${{ env.GCP_REGION }}
+        run: |
+          set -euo pipefail
+          TF_STATE_BUCKET="${PROJECT_ID}-voice-agent-tfstate"
+          echo "TF_STATE_BUCKET=${TF_STATE_BUCKET}" >> "${GITHUB_ENV}"
+
+          if ! gcloud storage buckets describe "gs://${TF_STATE_BUCKET}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+            gcloud storage buckets create "gs://${TF_STATE_BUCKET}" \
+              --project "${PROJECT_ID}" \
+              --location "${REGION}" \
+              --uniform-bucket-level-access
+          fi
+
+      - name: Terraform Init
+        working-directory: infra
+        run: terraform init -backend-config="bucket=${TF_STATE_BUCKET}"
+        env:
+          TF_STATE_BUCKET: ${{ env.TF_STATE_BUCKET }}
+
+      - name: Terraform Apply (bootstrap infra)
+        working-directory: infra
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: |
+          terraform apply -auto-approve \
+            -var="project_id=${PROJECT_ID}" \
+            -var="region=${GCP_REGION}" \
+            -var="service_name=${SERVICE_NAME}" \
+            -var="artifact_repository=${ARTIFACT_REPOSITORY}" \
+            -var="container_image=us-docker.pkg.dev/cloudrun/container/hello" \
+            -var="google_api_key=${GOOGLE_API_KEY}" \
+            -var="cc_api_url=https://krep.vercel/app"
+
+      - name: Configure Docker auth for Artifact Registry
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Build and push image
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          IMAGE_URI="${GCP_REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPOSITORY}/${SERVICE_NAME}:${GITHUB_SHA}"
+          docker build -t "${IMAGE_URI}" .
+          docker push "${IMAGE_URI}"
+          echo "IMAGE_URI=${IMAGE_URI}" >> "${GITHUB_ENV}"
+
+      - name: Terraform Apply (deploy latest image)
+        working-directory: infra
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          IMAGE_URI: ${{ env.IMAGE_URI }}
+        run: |
+          terraform apply -auto-approve \
+            -var="project_id=${PROJECT_ID}" \
+            -var="region=${GCP_REGION}" \
+            -var="service_name=${SERVICE_NAME}" \
+            -var="artifact_repository=${ARTIFACT_REPOSITORY}" \
+            -var="container_image=${IMAGE_URI}" \
+            -var="google_api_key=${GOOGLE_API_KEY}" \
+            -var="cc_api_url=https://krep.vercel/app"
+
+      - name: Show deployed URL
+        working-directory: infra
+        run: terraform output service_url

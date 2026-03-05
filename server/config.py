@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     """Voice agent configuration — loaded from environment variables."""
 
     google_api_key: str = ""
-    cc_api_url: str = "http://localhost:3000"
+    cc_api_url: str = "https://krep.vercel.app"
     port: int = 8080
     app_name: str = "cc-voice-agent"
 
