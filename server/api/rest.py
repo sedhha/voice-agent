@@ -1,12 +1,11 @@
 """Restful router to invoke compliance router agent for non-voice interactions."""
 from typing import Annotated
-from fastapi import Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from google.adk import Runner
 from google.genai import types
 from google.adk.sessions import Session
-from server.agents import compliance_router
 from google.adk.sessions import InMemorySessionService
-from fastapi import APIRouter
+from server.agents import compliance_router
 
 session_service = InMemorySessionService()
 router = APIRouter()
@@ -25,8 +24,25 @@ async def invoke_agent(
 ):
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header missing")
-    
-    session.state["user_token"] = authorization 
+
+    token = authorization.removeprefix("Bearer ").strip()
+    existing_session = await session_service.get_session(
+        app_name="compliance_app",
+        user_id=session.user_id,
+        session_id=session.id,
+    )
+
+    if not existing_session:
+        state = dict(session.state or {})
+        state["user_token"] = token
+        await session_service.create_session(
+            app_name="compliance_app",
+            user_id=session.user_id,
+            session_id=session.id,
+            state=state,
+        )
+    else:
+        existing_session.state["user_token"] = token
 
     user_message = types.Content(
         role="user", 
@@ -49,4 +65,3 @@ async def invoke_agent(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
