@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from server.api import ws_router
+from server.api import ws_router, rest_router
 
 app = FastAPI(
     title="Compliance Copilot Voice Agent",
@@ -18,7 +18,7 @@ app.add_middleware(
 )
 
 app.include_router(ws_router)
-
+app.include_router(rest_router)
 
 @app.get("/health")
 async def health():

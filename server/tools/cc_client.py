@@ -1,5 +1,7 @@
 """HTTP client for calling the Compliance Copilot REST API."""
 
+from typing import Any
+
 import httpx
 
 from server.config import settings
@@ -23,8 +25,8 @@ async def cc_request(
     path: str,
     *,
     token: str = "",
-    **kwargs,
-) -> dict:
+    **kwargs: Any,
+) -> dict[str, Any]:
     """Make an authenticated request to the Compliance Copilot API.
 
     Args:
@@ -34,7 +36,7 @@ async def cc_request(
         **kwargs: Passed to httpx (json, params, etc.)
     """
     client = get_client()
-    headers = kwargs.pop("headers", {})
+    headers: dict[str, str] = kwargs.pop("headers", {})
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
