@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 
+USE_AUDIO = False
 
 class Settings(BaseSettings):
     """Voice agent configuration — loaded from environment variables."""
@@ -10,7 +11,7 @@ class Settings(BaseSettings):
     app_name: str = "cc-voice-agent"
 
     # Gemini Live API model
-    gemini_model: str = "gemini-2.5-flash-native-audio-latest"
+    gemini_model: str = "gemini-2.5-flash-native-audio-latest" if USE_AUDIO else "gemini-2.5-flash-lite"    
 
     # Voice config
     voice_name: str = "Kore"
