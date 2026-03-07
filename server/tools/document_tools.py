@@ -125,4 +125,5 @@ async def list_organisations(tool_context: ToolContext) -> JsonDict:
         List of organisations with IDs and names.
     """
     token = str(tool_context.session.state.get("user_token", ""))
+    print(f'User token: {token}')
     return await cc_request("GET", "/api/organisations", token=token)

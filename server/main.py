@@ -1,7 +1,26 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from server.api import ws_router, rest_router
+
+
+def configure_logging() -> None:
+    """Emit application logs through a dedicated handler at INFO level."""
+    server_logger = logging.getLogger("server")
+    if server_logger.handlers:
+        return
+
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s - %(message)s"))
+
+    server_logger.addHandler(handler)
+    server_logger.setLevel(logging.INFO)
+    server_logger.propagate = False
+
+
+configure_logging()
 
 app = FastAPI(
     title="Compliance Copilot Voice Agent",

@@ -1,18 +1,22 @@
 """Restful router to invoke compliance router agent for non-voice interactions."""
 from typing import Annotated
+
 from fastapi import APIRouter, Header, HTTPException
 from google.adk import Runner
-from google.genai import types
 from google.adk.sessions import Session
 from google.adk.sessions import InMemorySessionService
+from google.genai import types
+
 from server.agents import compliance_router
+from server.config import settings
+from server.session_state import persist_session_value
 
 session_service = InMemorySessionService()
 router = APIRouter()
 
 runner = Runner(
     agent=compliance_router, 
-    app_name="compliance_app", 
+    app_name=settings.app_name, 
     session_service=session_service
 )
 
@@ -27,22 +31,28 @@ async def invoke_agent(
 
     token = authorization.removeprefix("Bearer ").strip()
     existing_session = await session_service.get_session(
-        app_name="compliance_app",
+        app_name=settings.app_name,
         user_id=session.user_id,
         session_id=session.id,
     )
 
     if not existing_session:
-        state = dict(session.state or {})
-        state["user_token"] = token
         await session_service.create_session(
-            app_name="compliance_app",
+            app_name=settings.app_name,
             user_id=session.user_id,
             session_id=session.id,
-            state=state,
         )
-    else:
-        existing_session.state["user_token"] = token
+
+    stored = persist_session_value(
+        session_service=session_service,
+        app_name=settings.app_name,
+        user_id=session.user_id,
+        session_id=session.id,
+        key="user_token",
+        value=token,
+    )
+    if not stored:
+        raise HTTPException(status_code=500, detail="Could not persist session token")
 
     user_message = types.Content(
         role="user", 

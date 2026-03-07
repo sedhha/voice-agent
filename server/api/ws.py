@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 from server.agents import compliance_router
 from server.config import settings
+from server.session_state import persist_session_value
 from server.tools.navigation_tools import nav_queues
 
 router = APIRouter()
@@ -36,18 +37,14 @@ async def store_user_token(
     token_value: str,
 ) -> bool:
     """Persist the Firebase token in session state for downstream tool calls."""
-    sess = await session_service.get_session(
+    return persist_session_value(
+        session_service=session_service,
         app_name=settings.app_name,
         user_id=user_id,
         session_id=session_id,
+        key="user_token",
+        value=token_value,
     )
-    if not sess:
-        return False
-
-    if sess.state is None:
-        sess.state = {}
-    sess.state["user_token"] = token_value
-    return True
 
 
 async def wait_for_auth(

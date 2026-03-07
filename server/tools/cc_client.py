@@ -41,6 +41,14 @@ async def cc_request(
         headers["Authorization"] = f"Bearer {token}"
 
     try:
+        logger.info(
+            "Making CC API request: %s %s token_present=%s token_len=%d kwargs=%s",
+            method,
+            path,
+            bool(token),
+            len(token),
+            kwargs,
+        )
         response = await client.request(method, path, headers=headers, **kwargs)
         response.raise_for_status()
         return response.json()
