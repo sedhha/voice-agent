@@ -174,7 +174,8 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
                 logger.debug("Event: %s", type(event).__name__)
                 if event.content and event.content.parts:
                     for part in event.content.parts:
-                        if part.inline_data:
+                        if part.inline_data and part.inline_data.data:
+                            assert part.inline_data.data is not None
                             await websocket.send_bytes(part.inline_data.data)
                         elif part.text:
                             await websocket.send_text(
