@@ -18,6 +18,7 @@ from server.tools.remediation_tools import (
     list_evidence_templates,
 )
 from server.tools.suggestion_tools import suggest_next_actions
+from server.tools.onboarding_tools import get_product_overview
 
 __all__ = [
     "get_assessment",
@@ -34,4 +35,5 @@ __all__ = [
     "list_products",
     "navigate_to_page",
     "suggest_next_actions",
+    "get_product_overview",
 ]

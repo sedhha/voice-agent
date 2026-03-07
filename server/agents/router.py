@@ -26,11 +26,12 @@ from server.tools.document_tools import (
 from server.tools.navigation_tools import navigate_to_page
 from server.tools.remediation_tools import get_failed_controls, list_evidence_templates
 from server.tools.suggestion_tools import suggest_next_actions
+from server.tools.onboarding_tools import get_product_overview
 
 compliance_router = Agent(
     name="compliance_copilot_voice",
     model=settings.gemini_model,
-    instruction="""You are the Compliance Copilot Voice Assistant — a friendly,
+    instruction="""You are Krep, the voice assistant — a friendly,
 knowledgeable AI that helps users navigate compliance requirements through
 natural conversation.
 
@@ -81,6 +82,12 @@ Examples of good suggestions after different actions:
 Each suggestion needs a label (short display text), type ("navigate",
 "query", or "action"), and prompt (what to send when tapped).
 
+ONBOARDING:
+- When a user asks "what is this?", "what can you do?", "give me a tour",
+  or seems new, call get_product_overview() and walk them through the platform
+- Use the overview data to give a warm, concise introduction
+- Follow up with suggest_next_actions() offering first steps
+
 When a user is new or unsure where to start, proactively call get_products()
 to show them what they have set up.
 
@@ -109,5 +116,7 @@ suggest_next_actions after responding.""",
         navigate_to_page,
         # Suggestions
         suggest_next_actions,
+        # Onboarding
+        get_product_overview,
     ],
 )

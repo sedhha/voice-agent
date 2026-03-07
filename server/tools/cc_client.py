@@ -1,4 +1,4 @@
-"""HTTP client for calling the Compliance Copilot REST API."""
+"""HTTP client for calling the Krep REST API."""
 
 import logging
 from typing import Any
@@ -30,7 +30,7 @@ async def cc_request(
     token: str = "",
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Make an authenticated request to the Compliance Copilot API.
+    """Make an authenticated request to the Krep API.
 
     Returns the JSON response on success, or an error dict on failure
     so the LLM agent can report the issue to the user instead of crashing.
@@ -63,5 +63,5 @@ async def cc_request(
         logger.error("CC API connection failed: %s %s → %s", method, path, e)
         return {
             "error": True,
-            "message": f"Could not connect to Compliance Copilot API: {e}",
+            "message": f"Could not connect to Krep API: {e}",
         }

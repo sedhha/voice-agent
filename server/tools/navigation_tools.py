@@ -20,7 +20,7 @@ async def navigate_to_page(
     product_id: str = "",
     assessment_id: str = "",
 ) -> JsonDict:
-    """Navigate the Compliance Copilot UI to a specific page.
+    """Navigate the Krep UI to a specific page.
 
     Call this after fetching data (products, assessments, etc.) when the user
     wants to *see* something in the app.  The frontend will automatically

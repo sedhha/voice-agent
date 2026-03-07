@@ -23,7 +23,7 @@ def configure_logging() -> None:
 configure_logging()
 
 app = FastAPI(
-    title="Compliance Copilot Voice Agent",
+    title="Krep Voice Agent",
     description="Real-time voice assistant for compliance assessments using Gemini Live API",
     version="0.1.0",
 )
