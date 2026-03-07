@@ -1,8 +1,11 @@
 """Document tools — call CC API to list, search, and manage compliance documents."""
+import logging
 from typing import Any
 
 from google.adk.tools import ToolContext
 from server.tools.cc_client import cc_request
+
+logger = logging.getLogger(__name__)
 
 JsonDict = dict[str, Any]
 
@@ -79,6 +82,11 @@ async def get_products(
         policiesCount, and latestAssessmentScore.
     """
     token = str(tool_context.session.state.get("user_token", ""))
+    logger.info(
+        "get_products called — token length=%d, state keys=%s",
+        len(token),
+        list(tool_context.session.state.keys()),
+    )
     params: dict[str, str] = {}
     if org_id:
         params["organisationId"] = org_id

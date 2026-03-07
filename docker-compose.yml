@@ -6,7 +6,7 @@ services:
     env_file:
       - .env
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:${WSL_HOST_IP:-host-gateway}"
     volumes:
       - ./server:/app/server
     command: uv run uvicorn server.main:app --host 0.0.0.0 --port 8080 --reload

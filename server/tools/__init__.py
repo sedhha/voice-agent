@@ -12,6 +12,7 @@ from server.tools.document_tools import (
     list_organisations,
     list_products,
 )
+from server.tools.navigation_tools import navigate_to_page
 from server.tools.remediation_tools import (
     get_failed_controls,
     list_evidence_templates,
@@ -30,4 +31,5 @@ __all__ = [
     "list_frameworks",
     "list_organisations",
     "list_products",
+    "navigate_to_page",
 ]

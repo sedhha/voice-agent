@@ -16,8 +16,10 @@ logger = logging.getLogger(__name__)
 
 from server.agents import compliance_router
 from server.config import settings
+from server.tools.navigation_tools import nav_queues
 
 router = APIRouter()
+AUTH_TIMEOUT_SECONDS = 5.0
 
 session_service = InMemorySessionService()
 runner = Runner(
@@ -25,6 +27,52 @@ runner = Runner(
     agent=compliance_router,
     session_service=session_service,
 )
+
+
+async def store_user_token(
+    *,
+    user_id: str,
+    session_id: str,
+    token_value: str,
+) -> bool:
+    """Persist the Firebase token in session state for downstream tool calls."""
+    sess = await session_service.get_session(
+        app_name=settings.app_name,
+        user_id=user_id,
+        session_id=session_id,
+    )
+    if not sess:
+        return False
+
+    if sess.state is None:
+        sess.state = {}
+    sess.state["user_token"] = token_value
+    return True
+
+
+async def wait_for_auth(
+    *,
+    websocket: WebSocket,
+    auth_ready: asyncio.Event,
+    session_id: str,
+    timeout_seconds: float = AUTH_TIMEOUT_SECONDS,
+) -> bool:
+    """Block the live runner until the client has sent an auth message."""
+    try:
+        await asyncio.wait_for(auth_ready.wait(), timeout=timeout_seconds)
+        return True
+    except TimeoutError:
+        logger.warning("Voice session %s timed out waiting for auth", session_id)
+        await websocket.send_text(
+            json.dumps(
+                {
+                    "type": "error",
+                    "message": "Voice agent authentication timed out. Please try again.",
+                }
+            )
+        )
+        await websocket.close(code=4401, reason="Authentication required")
+        return False
 
 
 @router.websocket("/ws/voice/{user_id}/{session_id}")
@@ -38,7 +86,7 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
 
     run_config = RunConfig(
         streaming_mode=StreamingMode.BIDI,
-        response_modalities=["AUDIO"],
+        response_modalities=[types.Modality.AUDIO],
         speech_config=types.SpeechConfig(
             voice_config=types.VoiceConfig(
                 prebuilt_voice_config=types.PrebuiltVoiceConfig(
@@ -71,6 +119,7 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
         )
 
     live_queue = LiveRequestQueue()
+    auth_ready = asyncio.Event()
 
     async def upstream():
         """Client audio/text -> LiveRequestQueue -> Gemini."""
@@ -86,13 +135,20 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
                     msg = json.loads(raw["text"])
                     if msg.get("type") == "auth":
                         # Store Firebase token in session state for CC API calls
-                        sess = await session_service.get_session(
-                            app_name=settings.app_name,
+                        token_value = str(msg.get("token", "")).strip()
+                        stored = await store_user_token(
                             user_id=user_id,
                             session_id=session_id,
+                            token_value=token_value,
                         )
-                        if sess:
-                            sess.state["user_token"] = msg.get("token", "")
+                        if stored and token_value:
+                            auth_ready.set()
+                        logger.info(
+                            "Auth token stored for session %s (length=%d, stored=%s)",
+                            session_id,
+                            len(token_value),
+                            stored,
+                        )
                     elif msg.get("type") == "text":
                         content = types.Content(
                             parts=[types.Part(text=msg["text"])]
@@ -103,6 +159,13 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
 
     async def downstream():
         """Gemini responses -> WebSocket -> Client speakers."""
+        if not await wait_for_auth(
+            websocket=websocket,
+            auth_ready=auth_ready,
+            session_id=session_id,
+        ):
+            return
+
         logger.info("Starting run_live for session %s", session_id)
         try:
             async for event in runner.run_live(
@@ -139,6 +202,13 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
                             }
                         )
                     )
+
+                # Drain any pending navigation commands queued by navigate_to_page()
+                queue = nav_queues.get(session_id)
+                if queue:
+                    while not queue.empty():
+                        cmd = queue.get_nowait()
+                        await websocket.send_text(json.dumps(cmd))
         except Exception as e:
             logger.exception("run_live error: %s", e)
 
@@ -146,3 +216,4 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
         await asyncio.gather(upstream(), downstream(), return_exceptions=True)
     finally:
         live_queue.close()
+        nav_queues.pop(session_id, None)
