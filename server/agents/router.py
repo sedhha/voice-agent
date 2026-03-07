@@ -25,6 +25,7 @@ from server.tools.document_tools import (
 )
 from server.tools.navigation_tools import navigate_to_page
 from server.tools.remediation_tools import get_failed_controls, list_evidence_templates
+from server.tools.suggestion_tools import suggest_next_actions
 
 compliance_router = Agent(
     name="compliance_copilot_voice",
@@ -63,13 +64,31 @@ NAVIGATION:
 - After fetching data, offer to take the user there
   e.g. "Want me to open that assessment?" -> call navigate_to_page
 
+RESPONSE STRUCTURE:
+Keep voice responses brief — summarise the key point in 1-2 sentences, then
+ALWAYS call suggest_next_actions() with 2-4 contextual suggestions so the
+user sees clickable chips for what they can do next.
+
+Examples of good suggestions after different actions:
+- After listing products: suggest opening a specific product, running an
+  assessment, or viewing documents
+- After showing assessment results: suggest viewing failed controls, starting
+  remediation, or opening the assessment page
+- After navigation: suggest related actions for the page they landed on
+- For new users: suggest exploring products, listing frameworks, or viewing
+  an example assessment
+
+Each suggestion needs a label (short display text), type ("navigate",
+"query", or "action"), and prompt (what to send when tapped).
+
 When a user is new or unsure where to start, proactively call get_products()
 to show them what they have set up.
 
 Supported frameworks: SOC 2, GDPR, HIPAA, PIPEDA, HIA (Alberta).
 
 IMPORTANT: Always use tools to fetch real data. Never make up compliance
-results or document contents. Keep voice responses concise.""",
+results or document contents. Keep voice responses concise. ALWAYS call
+suggest_next_actions after responding.""",
     tools=[
         # Products & Documents
         get_products,
@@ -88,5 +107,7 @@ results or document contents. Keep voice responses concise.""",
         list_evidence_templates,
         # Navigation
         navigate_to_page,
+        # Suggestions
+        suggest_next_actions,
     ],
 )

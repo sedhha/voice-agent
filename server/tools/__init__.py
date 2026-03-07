@@ -17,6 +17,7 @@ from server.tools.remediation_tools import (
     get_failed_controls,
     list_evidence_templates,
 )
+from server.tools.suggestion_tools import suggest_next_actions
 
 __all__ = [
     "get_assessment",
@@ -32,4 +33,5 @@ __all__ = [
     "list_organisations",
     "list_products",
     "navigate_to_page",
+    "suggest_next_actions",
 ]

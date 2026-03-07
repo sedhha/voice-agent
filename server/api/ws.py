@@ -18,6 +18,7 @@ from server.agents import compliance_router
 from server.config import settings
 from server.session_state import persist_session_value
 from server.tools.navigation_tools import nav_queues
+from server.tools.suggestion_tools import suggestion_queues
 
 router = APIRouter()
 AUTH_TIMEOUT_SECONDS = 5.0
@@ -207,6 +208,13 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
                     while not queue.empty():
                         cmd = queue.get_nowait()
                         await websocket.send_text(json.dumps(cmd))
+
+                # Drain any pending suggestion payloads queued by suggest_next_actions()
+                sug_queue = suggestion_queues.get(session_id)
+                if sug_queue:
+                    while not sug_queue.empty():
+                        sug = sug_queue.get_nowait()
+                        await websocket.send_text(json.dumps(sug))
         except Exception as e:
             logger.exception("run_live error: %s", e)
 
@@ -215,3 +223,4 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
     finally:
         live_queue.close()
         nav_queues.pop(session_id, None)
+        suggestion_queues.pop(session_id, None)
