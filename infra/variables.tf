@@ -36,7 +36,7 @@ variable "google_api_key" {
 variable "cc_api_url" {
   description = "Compliance Copilot API base URL."
   type        = string
-  default     = "https://krep.vercel/app"
+  default     = "https://krep.vercel.app"
 }
 
 variable "allow_unauthenticated" {
