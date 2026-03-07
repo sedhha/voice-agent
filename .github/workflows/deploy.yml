@@ -73,7 +73,7 @@ jobs:
             -var="artifact_repository=${ARTIFACT_REPOSITORY}" \
             -var="container_image=us-docker.pkg.dev/cloudrun/container/hello" \
             -var="google_api_key=${GOOGLE_API_KEY}" \
-            -var="cc_api_url=https://krep.vercel/app"
+            -var="cc_api_url=https://krep.vercel.app"
 
       - name: Configure Docker auth for Artifact Registry
         run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
@@ -102,7 +102,7 @@ jobs:
             -var="artifact_repository=${ARTIFACT_REPOSITORY}" \
             -var="container_image=${IMAGE_URI}" \
             -var="google_api_key=${GOOGLE_API_KEY}" \
-            -var="cc_api_url=https://krep.vercel/app"
+            -var="cc_api_url=https://krep.vercel.app"
 
       - name: Show deployed URL
         working-directory: infra
