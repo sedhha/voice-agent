@@ -60,20 +60,37 @@ jobs:
         env:
           TF_STATE_BUCKET: ${{ env.TF_STATE_BUCKET }}
 
-      - name: Terraform Apply (bootstrap infra)
+      - name: Bootstrap infra (first deploy only)
         working-directory: infra
         env:
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         run: |
-          terraform apply -auto-approve \
-            -var="project_id=${PROJECT_ID}" \
-            -var="region=${GCP_REGION}" \
-            -var="service_name=${SERVICE_NAME}" \
-            -var="artifact_repository=${ARTIFACT_REPOSITORY}" \
-            -var="container_image=us-docker.pkg.dev/cloudrun/container/hello" \
-            -var="google_api_key=${GOOGLE_API_KEY}" \
-            -var="cc_api_url=https://krep.vercel.app"
+          # Only bootstrap if the Cloud Run service doesn't exist yet.
+          # This avoids replacing the live service with a hello container on every push.
+          if ! gcloud run services describe "${SERVICE_NAME}" \
+               --region="${GCP_REGION}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+            echo "Service does not exist — bootstrapping with placeholder image"
+            terraform apply -auto-approve \
+              -var="project_id=${PROJECT_ID}" \
+              -var="region=${GCP_REGION}" \
+              -var="service_name=${SERVICE_NAME}" \
+              -var="artifact_repository=${ARTIFACT_REPOSITORY}" \
+              -var="container_image=us-docker.pkg.dev/cloudrun/container/hello" \
+              -var="google_api_key=${GOOGLE_API_KEY}" \
+              -var="cc_api_url=https://krep.vercel.app"
+          else
+            echo "Service already exists — skipping bootstrap"
+            # Still ensure Artifact Registry and other non-service infra exists
+            terraform apply -auto-approve -target=google_artifact_registry_repository.voice_agent \
+              -var="project_id=${PROJECT_ID}" \
+              -var="region=${GCP_REGION}" \
+              -var="service_name=${SERVICE_NAME}" \
+              -var="artifact_repository=${ARTIFACT_REPOSITORY}" \
+              -var="container_image=us-docker.pkg.dev/cloudrun/container/hello" \
+              -var="google_api_key=${GOOGLE_API_KEY}" \
+              -var="cc_api_url=https://krep.vercel.app"
+          fi
 
       - name: Configure Docker auth for Artifact Registry
         run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
