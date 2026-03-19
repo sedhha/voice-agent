@@ -124,8 +124,12 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
             activity_handling=types.ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
             turn_coverage=types.TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
         ),
-        input_audio_transcription=types.AudioTranscriptionConfig(),
-        output_audio_transcription=types.AudioTranscriptionConfig(),
+        input_audio_transcription=types.AudioTranscriptionConfig(
+            language_code="en-US",
+        ),
+        output_audio_transcription=types.AudioTranscriptionConfig(
+            language_code="en-US",
+        ),
         # NOTE: session_resumption and context_window_compression are NOT
         # supported by gemini-2.5-flash-native-audio on Gemini API (1008).
         # They require Vertex AI + gemini-live-* models.
@@ -247,10 +251,6 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
                         json.dumps({"type": "text", "text": part.text})
                     )
 
-        # Send ALL input transcripts to the frontend.  With language_code
-        # set to en-US, Gemini should transcribe in English.  If non-Latin
-        # text still arrives, log a warning but still show it — better than
-        # an empty chat bubble.
         if hasattr(event, "input_transcription") and event.input_transcription:
             transcript_text = event.input_transcription.text or ""
             if transcript_text:
