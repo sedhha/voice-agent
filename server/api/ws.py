@@ -124,12 +124,13 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
             activity_handling=types.ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
             turn_coverage=types.TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
         ),
-        input_audio_transcription=types.AudioTranscriptionConfig(
-            language_code="en-US",
-        ),
-        output_audio_transcription=types.AudioTranscriptionConfig(
-            language_code="en-US",
-        ),
+        # NOTE: AudioTranscriptionConfig does not accept language_code
+        # (Pydantic extra=forbid). Gemini's ASR auto-detects language and
+        # may transcribe accented English in Devanagari or other scripts.
+        # We cannot control this — the audio is still processed correctly
+        # by the model; only the display transcript is affected.
+        input_audio_transcription=types.AudioTranscriptionConfig(),
+        output_audio_transcription=types.AudioTranscriptionConfig(),
         # NOTE: session_resumption and context_window_compression are NOT
         # supported by gemini-2.5-flash-native-audio on Gemini API (1008).
         # They require Vertex AI + gemini-live-* models.
