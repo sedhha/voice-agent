@@ -23,6 +23,20 @@ from server.tools.suggestion_tools import suggestion_queues
 router = APIRouter()
 AUTH_TIMEOUT_SECONDS = 5.0
 
+
+def _is_mostly_latin(text: str) -> bool:
+    """Return True if >50% of alphabetic chars are Latin (ASCII/extended).
+
+    Gemini's ASR sometimes transcribes English speech in Devanagari, Arabic,
+    or other scripts.  This filter lets us suppress those mis-transcriptions
+    while keeping the correctly-heard audio flowing to the model.
+    """
+    alpha_chars = [c for c in text if c.isalpha()]
+    if not alpha_chars:
+        return True  # No alpha chars — let it through (numbers, punctuation)
+    latin_count = sum(1 for c in alpha_chars if c.isascii())
+    return latin_count / len(alpha_chars) > 0.5
+
 session_service = InMemorySessionService()
 runner = Runner(
     app_name=settings.app_name,
@@ -90,7 +104,7 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
                 prebuilt_voice_config=types.PrebuiltVoiceConfig(
                     voice_name=settings.voice_name,
                 )
-            )
+            ),
         ),
         realtime_input_config=types.RealtimeInputConfig(
             automatic_activity_detection=types.AutomaticActivityDetection(
@@ -105,6 +119,9 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
         ),
         input_audio_transcription=types.AudioTranscriptionConfig(),
         output_audio_transcription=types.AudioTranscriptionConfig(),
+        # NOTE: session_resumption and context_window_compression are NOT
+        # supported by gemini-2.5-flash-native-audio on Gemini API (1008).
+        # They require Vertex AI + gemini-live-* models.
     )
 
     # Create or resume session
@@ -155,8 +172,92 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
         except WebSocketDisconnect:
             pass
 
+    async def _process_event(event):
+        """Handle a single ADK live event — audio, transcription, queues."""
+        # Notify the frontend when tools are executing (UI indicator only).
+        # NOTE: We do NOT gate audio server-side because ADK manages tool
+        # execution internally — get_function_responses() events may never
+        # reach us, leaving the gate stuck closed and killing the mic.
+        if hasattr(event, "get_function_calls") and event.get_function_calls():
+            logger.debug("Tool call detected")
+            await websocket.send_text(
+                json.dumps({"type": "tool_executing", "active": True})
+            )
+        if hasattr(event, "get_function_responses") and event.get_function_responses():
+            logger.debug("Tool response received")
+            await websocket.send_text(
+                json.dumps({"type": "tool_executing", "active": False})
+            )
+
+        if event.content and event.content.parts:
+            for part in event.content.parts:
+                if part.inline_data and part.inline_data.data:
+                    assert part.inline_data.data is not None
+                    await websocket.send_bytes(part.inline_data.data)
+                elif part.text:
+                    await websocket.send_text(
+                        json.dumps({"type": "text", "text": part.text})
+                    )
+
+        if hasattr(event, "input_transcription") and event.input_transcription:
+            transcript_text = event.input_transcription.text or ""
+            # Gemini's ASR sometimes transcribes English speech in Devanagari
+            # or other non-Latin scripts.  Filter those out — the audio itself
+            # is still processed correctly by the model; this only affects the
+            # display transcript sent to the frontend.
+            if transcript_text and _is_mostly_latin(transcript_text):
+                await websocket.send_text(
+                    json.dumps(
+                        {
+                            "type": "input_transcript",
+                            "text": transcript_text,
+                        }
+                    )
+                )
+        if hasattr(event, "output_transcription") and event.output_transcription:
+            await websocket.send_text(
+                json.dumps(
+                    {
+                        "type": "output_transcript",
+                        "text": event.output_transcription.text,
+                    }
+                )
+            )
+
+        # Drain navigation/suggestion queues BEFORE turn_complete
+        # so the frontend receives them while the agent bubble is
+        # still active (not yet sealed).
+        queue = nav_queues.get(session_id)
+        if queue:
+            while not queue.empty():
+                cmd = queue.get_nowait()
+                await websocket.send_text(json.dumps(cmd))
+
+        sug_queue = suggestion_queues.get(session_id)
+        if sug_queue:
+            while not sug_queue.empty():
+                sug = sug_queue.get_nowait()
+                await websocket.send_text(json.dumps(sug))
+
+        # Signal turn boundary AFTER queued payloads.
+        if getattr(event, "turn_complete", False):
+            await websocket.send_text(
+                json.dumps({"type": "turn_complete"})
+            )
+        if getattr(event, "interrupted", False):
+            await websocket.send_text(
+                json.dumps({"type": "turn_complete", "interrupted": True})
+            )
+
+    MAX_RETRIES = 2
+
     async def downstream():
-        """Gemini responses -> WebSocket -> Client speakers."""
+        """Gemini responses -> WebSocket -> Client speakers.
+
+        Retries on transient 1011 errors (known Gemini server-side bug
+        during tool execution). On final failure, notifies the frontend
+        and closes the WebSocket so it can reconnect cleanly.
+        """
         if not await wait_for_auth(
             websocket=websocket,
             auth_ready=auth_ready,
@@ -164,59 +265,48 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
         ):
             return
 
-        logger.info("Starting run_live for session %s", session_id)
-        try:
-            async for event in runner.run_live(
-                user_id=user_id,
-                session_id=session_id,
-                live_request_queue=live_queue,
-                run_config=run_config,
-            ):
-                logger.debug("Event: %s", type(event).__name__)
-                if event.content and event.content.parts:
-                    for part in event.content.parts:
-                        if part.inline_data and part.inline_data.data:
-                            assert part.inline_data.data is not None
-                            await websocket.send_bytes(part.inline_data.data)
-                        elif part.text:
-                            await websocket.send_text(
-                                json.dumps({"type": "text", "text": part.text})
-                            )
-
-                if hasattr(event, "input_transcription") and event.input_transcription:
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                logger.info(
+                    "Starting run_live for session %s (attempt %d)",
+                    session_id, attempt + 1,
+                )
+                async for event in runner.run_live(
+                    user_id=user_id,
+                    session_id=session_id,
+                    live_request_queue=live_queue,
+                    run_config=run_config,
+                ):
+                    await _process_event(event)
+                return  # Clean exit
+            except Exception as e:
+                err_str = str(e)
+                is_transient = "1011" in err_str or "1008" in err_str
+                if is_transient and attempt < MAX_RETRIES:
+                    logger.warning(
+                        "Transient Gemini error (attempt %d/%d): %s",
+                        attempt + 1,
+                        MAX_RETRIES + 1,
+                        err_str[:120],
+                    )
+                    await asyncio.sleep(1)
+                    continue
+                logger.exception("run_live error (final): %s", e)
+                try:
                     await websocket.send_text(
                         json.dumps(
                             {
-                                "type": "input_transcript",
-                                "text": event.input_transcription.text,
+                                "type": "error",
+                                "message": "Voice connection interrupted. Please reconnect.",
                             }
                         )
                     )
-                if hasattr(event, "output_transcription") and event.output_transcription:
-                    await websocket.send_text(
-                        json.dumps(
-                            {
-                                "type": "output_transcript",
-                                "text": event.output_transcription.text,
-                            }
-                        )
+                    await websocket.close(
+                        code=1011, reason="Gemini connection lost"
                     )
-
-                # Drain any pending navigation commands queued by navigate_to_page()
-                queue = nav_queues.get(session_id)
-                if queue:
-                    while not queue.empty():
-                        cmd = queue.get_nowait()
-                        await websocket.send_text(json.dumps(cmd))
-
-                # Drain any pending suggestion payloads queued by suggest_next_actions()
-                sug_queue = suggestion_queues.get(session_id)
-                if sug_queue:
-                    while not sug_queue.empty():
-                        sug = sug_queue.get_nowait()
-                        await websocket.send_text(json.dumps(sug))
-        except Exception as e:
-            logger.exception("run_live error: %s", e)
+                except Exception:
+                    pass
+                return
 
     try:
         await asyncio.gather(upstream(), downstream(), return_exceptions=True)

@@ -35,6 +35,9 @@ compliance_router = Agent(
 knowledgeable AI that helps users navigate compliance requirements through
 natural conversation.
 
+LANGUAGE: Always respond in English. Always transcribe and interpret user
+speech as English regardless of accent or pronunciation.
+
 Your personality:
 - Professional but approachable (not robotic)
 - Proactive — suggest next steps without being asked
