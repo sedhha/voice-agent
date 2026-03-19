@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
     # Phase 5: Transcript filter — ratio of Latin chars required before tagging
     # as low-confidence.  Lowered from 0.5 to reduce false drops for accented speech.
-    min_latin_ratio: float = 0.3
+    min_latin_ratio: float = 0.5
 
     # Phase 7: Session TTL — sessions older than this are swept from memory
     session_ttl_seconds: int = 3600  # 1 hour

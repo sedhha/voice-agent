@@ -108,6 +108,10 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
                     voice_name=settings.voice_name,
                 )
             ),
+            # Force English transcription — Gemini's ASR defaults to the
+            # detected language which often picks Hindi/Devanagari for
+            # accented English speakers.
+            language_code="en-US",
         ),
         realtime_input_config=types.RealtimeInputConfig(
             automatic_activity_detection=types.AutomaticActivityDetection(
@@ -243,15 +247,16 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
                         json.dumps({"type": "text", "text": part.text})
                     )
 
-        # Phase 5: Send ALL transcripts — tag uncertain ones as low-confidence
-        # instead of silently dropping them.
+        # Send ALL input transcripts to the frontend.  With language_code
+        # set to en-US, Gemini should transcribe in English.  If non-Latin
+        # text still arrives, log a warning but still show it — better than
+        # an empty chat bubble.
         if hasattr(event, "input_transcription") and event.input_transcription:
             transcript_text = event.input_transcription.text or ""
             if transcript_text:
-                is_latin = _is_mostly_latin(transcript_text)
-                if not is_latin:
+                if not _is_mostly_latin(transcript_text):
                     logger.warning(
-                        "Low-confidence transcript (non-Latin) in session %s: %.80s",
+                        "Non-Latin transcript in session %s: %.80s",
                         current_session_id,
                         transcript_text,
                     )
@@ -260,7 +265,6 @@ async def voice_endpoint(websocket: WebSocket, user_id: str, session_id: str):
                         {
                             "type": "input_transcript",
                             "text": transcript_text,
-                            **({"low_confidence": True} if not is_latin else {}),
                         }
                     )
                 )
