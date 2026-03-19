@@ -15,7 +15,14 @@ class Settings(BaseSettings):
 
     # Voice config
     voice_name: str = "Kore"
-    silence_duration_ms: int = 700
+    silence_duration_ms: int = 1000  # Tuned up from 700 — prevents mid-sentence cutoffs
+
+    # Phase 5: Transcript filter — ratio of Latin chars required before tagging
+    # as low-confidence.  Lowered from 0.5 to reduce false drops for accented speech.
+    min_latin_ratio: float = 0.3
+
+    # Phase 7: Session TTL — sessions older than this are swept from memory
+    session_ttl_seconds: int = 3600  # 1 hour
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
