@@ -39,7 +39,7 @@ async def get_product_overview(
             "See a clear pass-or-fail verdict for every control, with evidence citations from your documents",
             "Use the remediation wizard to fix compliance gaps — it guides you step by step like a GPS",
             "Generate missing policy documents with AI — just pick a template and Krep drafts it for you",
-            "Talk to me, your voice assistant, to navigate the app hands-free and get answers fast",
+            "Talk to me like your compliance assistant, and I'll help you navigate the app hands-free and get answers fast",
         ],
         "supported_frameworks": [
             {"name": "SOC 2", "description": "Service Organization Control 2 — trust services criteria for SaaS and cloud services"},
